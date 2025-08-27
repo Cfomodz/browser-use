@@ -1,0 +1,45 @@
+{
+	"metadata": {
+		"project": "browser-use issue review",
+		"source_repo": "browser-use/browser-use",
+		"fork_repo": "cfomodz/browser-use",
+		"started_date": "2025-08-27",
+		"last_reviewed_issue": 191,
+		"total_issues_reviewed": 3
+	},
+	"reviews": [
+		{
+			"issue_number": 180,
+			"title": "[Bug] Font handling crash in create_history_gif",
+			"created_at": "2025-01-07T10:32:45Z",
+			"category": "bug",
+			"status": "fixed",
+			"intended_comment": "Fixed the font handling crash by addressing font path issues in the GIF creation code.",
+			"intended_result": "closed",
+			"branch_created": "cfomodz-font-fix-180",
+			"notes": "Issue was reproducible and has been fixed with code changes."
+		},
+		{
+			"issue_number": 187,
+			"title": "Support for Amazon Bedrock Client: Fix ValidationException with message role",
+			"created_at": "2025-01-08T06:39:32Z",
+			"category": "feature_request",
+			"status": "not_planned",
+			"intended_comment": "Thanks for the suggestion! After evaluation, this specific Bedrock integration isn't something we're planning to implement at this time due to maintenance complexity vs usage. The existing LLM integrations cover most use cases.",
+			"intended_result": "not_planned",
+			"branch_created": null,
+			"notes": "Evaluated but decided not to implement due to complexity vs benefit ratio."
+		},
+		{
+			"issue_number": 191,
+			"title": "Endless loop detection to avoid high LLM usage costs",
+			"created_at": "2025-01-08T12:13:52Z",
+			"category": "feature_request",
+			"status": "implemented",
+			"intended_comment": "Great suggestion! I've implemented endless loop detection that monitors recent actions and stops the agent when repeated patterns are detected. This includes configurable detection window and threshold settings, and works for scroll loops, repeated clicking, and other repetitive behaviors. The feature is enabled by default but can be configured via agent parameters.",
+			"intended_result": "closed",
+			"branch_created": "cfomodz-endless-loop-detection-191",
+			"notes": "Implemented comprehensive loop detection with configurable parameters. Added detection for scroll loops, click loops, and other repetitive patterns. Feature prevents high LLM costs from infinite loops."
+		}
+	]
+}

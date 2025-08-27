@@ -56,6 +56,11 @@ class AgentSettings(BaseModel):
 	include_tool_call_examples: bool = False
 	llm_timeout: int = 60  # Timeout in seconds for LLM calls
 	step_timeout: int = 180  # Timeout in seconds for each step
+	
+	# Loop detection settings
+	enable_loop_detection: bool = True
+	loop_detection_window: int = 3  # Number of recent steps to check for loops
+	loop_detection_threshold: int = 2  # Number of similar steps to trigger detection
 
 
 class AgentState(BaseModel):
@@ -74,6 +79,9 @@ class AgentState(BaseModel):
 
 	message_manager_state: MessageManagerState = Field(default_factory=MessageManagerState)
 	file_system_state: FileSystemState | None = None
+	
+	# Loop detection state
+	recent_actions: list[dict[str, Any]] = Field(default_factory=list)  # Track recent actions for loop detection
 
 	# class Config:
 	# 	arbitrary_types_allowed = True

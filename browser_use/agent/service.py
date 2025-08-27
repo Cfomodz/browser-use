@@ -187,6 +187,10 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 		step_timeout: int = 120,
 		preload: bool = True,
 		include_recent_events: bool = False,
+		# Loop detection parameters
+		enable_loop_detection: bool = True,
+		loop_detection_window: int = 3,
+		loop_detection_threshold: int = 2,
 		**kwargs,
 	):
 		if not isinstance(llm, BaseChatModel):
@@ -273,6 +277,9 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 			include_tool_call_examples=include_tool_call_examples,
 			llm_timeout=llm_timeout,
 			step_timeout=step_timeout,
+			enable_loop_detection=enable_loop_detection,
+			loop_detection_window=loop_detection_window,
+			loop_detection_threshold=loop_detection_threshold,
 		)
 
 		# Token cost service
@@ -765,6 +772,30 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 
 		# Check again for paused/stopped state after getting model output
 		await self._raise_if_stopped_or_paused()
+		
+		# Check for endless loop after getting model output but before executing actions
+		if self.settings.enable_loop_detection:
+			is_loop, loop_description = self._detect_endless_loop()
+			if is_loop:
+				self.logger.warning(f'🔄 Endless loop detected: {loop_description}')
+				self.logger.warning('🛑 Stopping execution to prevent infinite loop and high LLM costs.')
+				
+				# Create an error result
+				error_msg = f'Endless loop detected: {loop_description}. The agent was repeating the same actions without making progress.'
+				self.state.last_result = [ActionResult(error=error_msg, include_in_memory=True)]
+				
+				# Mark as done with failure to stop the execution loop
+				done_result = ActionResult(
+					is_done=True, 
+					success=False,
+					extracted_content=f'Task stopped due to endless loop detection: {loop_description}',
+					include_in_memory=True
+				)
+				self.state.last_result = [done_result]
+				
+				# Skip action execution and return early
+				await self._finalize(browser_state_summary)
+				return
 
 		# Handle callbacks and conversation saving
 		await self._handle_post_llm_processing(browser_state_summary, input_messages)
@@ -782,6 +813,162 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 		self.logger.debug(f'✅ Step {self.state.n_steps}: Actions completed')
 
 		self.state.last_result = result
+
+	def _update_recent_actions(self, model_output: AgentOutput) -> None:
+		"""Update the recent actions list for loop detection."""
+		if not model_output.action:
+			return
+			
+		# Convert actions to a simplified format for comparison
+		current_action_summary = []
+		for action in model_output.action:
+			action_data = action.model_dump(exclude_unset=True)
+			action_name = next(iter(action_data.keys())) if action_data else 'unknown'
+			action_params = action_data.get(action_name, {}) if action_data else {}
+			
+			# Create a normalized summary focusing on action type and key parameters
+			summary = {
+				'action': action_name,
+				'goal': model_output.current_state.next_goal if model_output.current_state else '',
+			}
+			
+			# Add key parameters that are relevant for loop detection
+			if isinstance(action_params, dict):
+				# Include index for click/type actions to detect clicking same elements
+				if 'index' in action_params:
+					summary['index'] = action_params['index']
+				# Include URL for navigation actions
+				if 'url' in action_params:
+					summary['url'] = action_params['url']
+				# Include scroll direction for scroll actions
+				if action_name in ['scroll_up', 'scroll_down']:
+					summary['scroll_direction'] = action_name
+				# Include text for type actions (first 50 chars to avoid long texts)
+				if 'text' in action_params:
+					text = str(action_params['text'])[:50]
+					summary['text'] = text
+					
+			current_action_summary.append(summary)
+		
+		# Add to recent actions list
+		self.state.recent_actions.append({
+			'step': self.state.n_steps,
+			'actions': current_action_summary,
+			'goal': model_output.current_state.next_goal if model_output.current_state else '',
+		})
+		
+		# Keep only the most recent actions within the detection window
+		window_size = self.settings.loop_detection_window
+		if len(self.state.recent_actions) > window_size:
+			self.state.recent_actions = self.state.recent_actions[-window_size:]
+
+	def _detect_endless_loop(self) -> tuple[bool, str]:
+		"""
+		Detect if the agent is in an endless loop based on recent actions.
+		
+		Returns:
+			tuple[bool, str]: (is_loop_detected, loop_description)
+		"""
+		if not self.settings.enable_loop_detection or len(self.state.recent_actions) < 2:
+			return False, ""
+			
+		recent_actions = self.state.recent_actions[-self.settings.loop_detection_window:]
+		
+		# Check for repeated identical actions
+		identical_count = 0
+		if len(recent_actions) >= 2:
+			last_action = recent_actions[-1]
+			for prev_action in recent_actions[-self.settings.loop_detection_window:-1]:
+				if self._actions_are_similar(last_action, prev_action):
+					identical_count += 1
+		
+		# Check if we've exceeded the threshold
+		if identical_count >= self.settings.loop_detection_threshold:
+			# Generate description of the loop
+			loop_description = self._generate_loop_description(recent_actions[-self.settings.loop_detection_threshold-1:])
+			return True, loop_description
+			
+		return False, ""
+
+	def _actions_are_similar(self, action1: dict[str, Any], action2: dict[str, Any]) -> bool:
+		"""Compare two action summaries to determine if they are similar enough to constitute a loop."""
+		actions1 = action1.get('actions', [])
+		actions2 = action2.get('actions', [])
+		
+		# Must have same number of actions
+		if len(actions1) != len(actions2):
+			return False
+		
+		# Compare each action
+		for a1, a2 in zip(actions1, actions2):
+			# Same action type is required
+			if a1.get('action') != a2.get('action'):
+				return False
+				
+			# For certain actions, also check key parameters
+			action_type = a1.get('action')
+			
+			# For click actions, same index indicates repeated clicking
+			if action_type in ['click_element', 'click'] and a1.get('index') != a2.get('index'):
+				return False
+				
+			# For navigation, same URL indicates repeated navigation
+			if action_type in ['go_to_url', 'open_tab'] and a1.get('url') != a2.get('url'):
+				return False
+				
+			# For scroll actions, same direction
+			if action_type in ['scroll_up', 'scroll_down'] and a1.get('scroll_direction') != a2.get('scroll_direction'):
+				return False
+				
+			# For typing, similar text (this is more lenient)
+			if action_type in ['type_text', 'input_text']:
+				text1 = a1.get('text', '')
+				text2 = a2.get('text', '')
+				if text1 != text2:
+					return False
+		
+		# Also compare goals to detect repeated goals
+		goal1 = action1.get('goal', '')
+		goal2 = action2.get('goal', '')
+		
+		# If goals are the same and actions are the same, it's likely a loop
+		return goal1 == goal2
+
+	def _generate_loop_description(self, loop_actions: list[dict[str, Any]]) -> str:
+		"""Generate a human-readable description of the detected loop."""
+		if not loop_actions:
+			return "Detected repeated actions"
+			
+		# Get the repeated action pattern
+		last_action = loop_actions[-1]
+		actions = last_action.get('actions', [])
+		goal = last_action.get('goal', 'No goal specified')
+		
+		if not actions:
+			return f"Repeated goal: '{goal}'"
+		
+		# Describe the actions
+		action_descriptions = []
+		for action in actions:
+			action_name = action.get('action', 'unknown')
+			if action_name == 'scroll_down':
+				action_descriptions.append("scrolling down")
+			elif action_name == 'scroll_up':
+				action_descriptions.append("scrolling up")
+			elif action_name == 'click_element':
+				index = action.get('index', 'unknown')
+				action_descriptions.append(f"clicking element #{index}")
+			elif action_name == 'type_text':
+				text = action.get('text', '')[:30]
+				action_descriptions.append(f"typing '{text}...'")
+			elif action_name == 'go_to_url':
+				url = action.get('url', 'unknown')
+				action_descriptions.append(f"navigating to {url}")
+			else:
+				action_descriptions.append(f"performing {action_name}")
+		
+		actions_str = ", ".join(action_descriptions)
+		return f"Repeated pattern: {actions_str} with goal '{goal}'"
 
 	async def _post_process(self) -> None:
 		"""Handle post-action processing like download tracking and result logging"""
@@ -906,6 +1093,10 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 			)
 			self.eventbus.dispatch(step_event)
 
+		# Update recent actions for loop detection before incrementing step
+		if self.settings.enable_loop_detection and self.state.last_model_output:
+			self._update_recent_actions(self.state.last_model_output)
+			
 		# Increment step counter after step is fully completed
 		self.state.n_steps += 1
 
