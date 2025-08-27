@@ -49,6 +49,7 @@ if TYPE_CHECKING:
 	from browser_use.agent.service import Agent
 	from browser_use.agent.views import ActionModel, ActionResult, AgentHistoryList
 	from browser_use.browser import BrowserProfile, BrowserSession
+	from browser_use.browser import BrowserSession as Browser
 	from browser_use.controller.service import Controller
 	from browser_use.dom.service import DomService
 	from browser_use.llm.anthropic.chat import ChatAnthropic
@@ -71,6 +72,7 @@ _LAZY_IMPORTS = {
 	'AgentHistoryList': ('browser_use.agent.views', 'AgentHistoryList'),
 	# Browser components (heavy due to playwright/patchright)
 	'BrowserSession': ('browser_use.browser', 'BrowserSession'),
+	'Browser': ('browser_use.browser', 'BrowserSession'),  # Alias for BrowserSession
 	'BrowserProfile': ('browser_use.browser', 'BrowserProfile'),
 	# Controller (moderate weight)
 	'Controller': ('browser_use.controller.service', 'Controller'),
@@ -107,6 +109,7 @@ def __getattr__(name: str):
 __all__ = [
 	'Agent',
 	'BrowserSession',
+	'Browser',  # Alias for BrowserSession
 	'BrowserProfile',
 	'Controller',
 	'DomService',

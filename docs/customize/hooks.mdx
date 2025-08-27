@@ -96,7 +96,7 @@ When working with agent hooks, you have access to the entire `Agent` instance. H
   - `agent.history.model_actions()`: Actions taken by the agent
   - `agent.history.extracted_content()`: Content extracted from web pages
   - `agent.history.urls()`: URLs visited by the agent
-- `agent.browser_session` gives direct access to the `BrowserSession()` and CDP interface
+- `agent.browser_session` gives direct access to the `Browser()` and CDP interface
   - `agent.browser_session.agent_focus`: Get the current CDP session the agent is focused on
   - `agent.browser_session.get_or_create_cdp_session()`: Get the current CDP session for browser interaction
   - `agent.browser_session.get_tabs()`: Get all tabs currently open

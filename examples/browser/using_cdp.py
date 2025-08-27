@@ -28,9 +28,9 @@ from browser_use.llm import ChatOpenAI
 browser_session = BrowserSession(
 	browser_profile=BrowserProfile(
 		headless=False,
-	),
-	cdp_url='http://localhost:9222',
-	is_local=True,  # set to False if you want to use a remote browser
+		cdp_url='http://localhost:9222',
+		is_local=False,
+	)
 )
 controller = Controller()
 

@@ -304,7 +304,12 @@ class BrowserSession(BaseModel):
 		profile_kwargs = {k: v for k, v in locals().items() if k not in ['self', 'browser_profile', 'id'] and v is not None}
 
 		# Create browser profile from direct parameters or use provided one
-		resolved_browser_profile = browser_profile or BrowserProfile(**profile_kwargs)
+		if browser_profile is not None:
+			# Merge any direct kwargs into the provided browser_profile (direct kwargs take precedence)
+			merged_kwargs = {**browser_profile.model_dump(exclude_unset=True), **profile_kwargs}
+			resolved_browser_profile = BrowserProfile(**merged_kwargs)
+		else:
+			resolved_browser_profile = BrowserProfile(**profile_kwargs)
 
 		# Initialize the Pydantic model
 		super().__init__(
@@ -2081,29 +2086,3 @@ class BrowserSession(BaseModel):
 				self.logger.debug(f'Failed to get CDP client for target {node.target_id}: {e}, using main session')
 
 		return await self.get_or_create_cdp_session()
-
-
-# # Fix Pydantic circular dependency for all watchdogs
-# # This must be called after BrowserSession class is fully defined
-# _watchdog_modules = [
-# 	'browser_use.browser.crash_watchdog.CrashWatchdog',
-# 	'browser_use.browser.downloads_watchdog.DownloadsWatchdog',
-# 	'browser_use.browser.local_browser_watchdog.LocalBrowserWatchdog',
-# 	'browser_use.browser.storage_state_watchdog.StorageStateWatchdog',
-# 	'browser_use.browser.security_watchdog.SecurityWatchdog',
-# 	'browser_use.browser.aboutblank_watchdog.AboutBlankWatchdog',
-# 	'browser_use.browser.popups_watchdog.PopupsWatchdog',
-# 	'browser_use.browser.permissions_watchdog.PermissionsWatchdog',
-# 	'browser_use.browser.default_action_watchdog.DefaultActionWatchdog',
-# 	'browser_use.browser.dom_watchdog.DOMWatchdog',
-# 	'browser_use.browser.screenshot_watchdog.ScreenshotWatchdog',
-# ]
-
-# for module_path in _watchdog_modules:
-# 	try:
-# 		module_name, class_name = module_path.rsplit('.', 1)
-# 		module = __import__(module_name, fromlist=[class_name])
-# 		watchdog_class = getattr(module, class_name)
-# 		watchdog_class.model_rebuild()
-# 	except Exception:
-# 		pass  # Ignore if watchdog can't be imported or rebuilt

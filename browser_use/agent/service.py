@@ -34,6 +34,8 @@ from bubus import EventBus
 from pydantic import ValidationError
 from uuid_extensions import uuid7str
 
+from browser_use import Browser, BrowserProfile, BrowserSession
+
 # Lazy import for gif to avoid heavy agent.views import at startup
 # from browser_use.agent.gif import create_history_gif
 from browser_use.agent.message_manager.service import (
@@ -53,7 +55,6 @@ from browser_use.agent.views import (
 	BrowserStateHistory,
 	StepMetadata,
 )
-from browser_use.browser import BrowserProfile, BrowserSession
 from browser_use.browser.session import DEFAULT_BROWSER_PROFILE
 from browser_use.browser.views import BrowserStateSummary
 from browser_use.config import CONFIG
@@ -134,6 +135,7 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 		# Optional parameters
 		browser_profile: BrowserProfile | None = None,
 		browser_session: BrowserSession | None = None,
+		browser: Browser | None = None,  # Alias for browser_session (cleaner naming)
 		controller: Controller[Context] | None = None,
 		# Initial agent run parameters
 		sensitive_data: dict[str, str | dict[str, str]] | None = None,
@@ -362,6 +364,11 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 		)
 
 		browser_profile = browser_profile or DEFAULT_BROWSER_PROFILE
+
+		# Handle browser vs browser_session parameter (browser takes precedence)
+		if browser and browser_session:
+			raise ValueError('Cannot specify both "browser" and "browser_session" parameters. Use "browser" for the cleaner API.')
+		browser_session = browser or browser_session
 
 		self.browser_session = browser_session or BrowserSession(
 			browser_profile=browser_profile,
@@ -1859,12 +1866,12 @@ class Agent(Generic[Context, AgentStructuredOutput]):
 
 	async def log_completion(self) -> None:
 		"""Log the completion of the task"""
-		self._task_end_time = time.time()
-		self._task_duration = self._task_end_time - self._task_start_time
+		# self._task_end_time = time.time()
+		# self._task_duration = self._task_end_time - self._task_start_time TODO: this is not working when using take_step
 		if self.history.is_successful():
-			self.logger.info(f'✅ Task completed successfully in {self._task_duration:.2f}s')
+			self.logger.info('✅ Task completed successfully')
 		else:
-			self.logger.info(f'❌ Task completed without success in {self._task_duration:.2f}s')
+			self.logger.info('❌ Task completed without success')
 
 	async def rerun_history(
 		self,
